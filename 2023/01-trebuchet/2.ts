@@ -10,15 +10,11 @@ readLines('input.txt').forEach((line: string) => {
   numberStrings.forEach((numberString, i) => {
     let index = line.indexOf(numberString);
     if (index !== -1 && index < firstNumberStringIndex) {
-      firstNumberStringIndex = index;
-      firstNumberString = numberString;
-      firstNumber = i + 1;
+      [firstNumberStringIndex, firstNumberString, firstNumber] = [index, numberString, i + 1];
     }
     index = line.lastIndexOf(numberString);
     if (index !== -1 && index > lastNumberStringIndex) {
-      lastNumberStringIndex = index;
-      lastNumberString = numberString;
-      lastNumber = i + 1;
+      [lastNumberStringIndex, lastNumberString, lastNumber] = [index, numberString, i + 1];
     }
   })
 
