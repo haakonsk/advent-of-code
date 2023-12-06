@@ -182,6 +182,11 @@ export function numCmp(a: number, b: number): number {
   return a-b;
 }
 
+export function multiplyNumbers(numbers: number[]): number {
+  return numbers.reduce((acc, curr) => acc * curr, 1);
+}
+
+/*
 // Warn if overriding existing method
 if(Array.prototype.equals)
   console.warn("Overriding existing Array.prototype.equals. Possible causes: New API defines the method, there's a framework conflict or you've got double inclusions in your code.");
@@ -213,3 +218,4 @@ Array.prototype.equals = function (array) {
 }
 // Hide method from for-in loops
 Object.defineProperty(Array.prototype, "equals", {enumerable: false});
+*/
