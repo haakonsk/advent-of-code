@@ -10,9 +10,8 @@ readLines('input.txt').forEach((line: string) => {
   map[currentPosition] = [leftPosition, rightPosition];
 });
 
-const startingPositions = getStartingPositions();
-const currentPositions = [...startingPositions];
-say(startingPositions);
+const currentPositions = getStartingPositions();
+say(currentPositions);
 
 let maxZs = 0;
 

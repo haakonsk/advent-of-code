@@ -186,6 +186,30 @@ export function multiplyNumbers(numbers: number[]): number {
   return numbers.reduce((acc, curr) => acc * curr, 1);
 }
 
+export function factorizeIntoPrimes(number: number): number[] {
+  const primes: number[] = [];
+
+  // Divide by 2 until it's odd
+  while (number % 2 === 0) {
+    primes.push(2);
+    number /= 2;
+  }
+
+  // Try dividing by odd numbers starting from 3
+  for (let i = 3; i <= Math.sqrt(number); i += 2) {
+    while (number % i === 0) {
+      primes.push(i);
+      number /= i;
+    }
+  }
+
+  if (number > 2) {
+    primes.push(number);
+  }
+
+  return primes;
+}
+
 /*
 // Warn if overriding existing method
 if(Array.prototype.equals)
