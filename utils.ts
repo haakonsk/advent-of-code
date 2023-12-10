@@ -82,7 +82,7 @@ export function printGrid(grid: Grid): void {
   let str = '';
   for (let i = 0; i < grid.length; i++) {
     for (let j = 0; j < grid[0].length; j++) {
-      const val = grid[i][j];
+      const val = grid[i][j] || ' ';
       str += typeof val === "boolean" ? (val ? '#' : ' ') : val === null ? ' ' : val;
     }
     str += '\n';
