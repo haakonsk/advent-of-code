@@ -182,6 +182,10 @@ export function numCmp(a: number, b: number): number {
   return a-b;
 }
 
+export function addNumbers(numbers: number[]): number {
+  return numbers.reduce((acc, curr) => acc + curr, 0);
+}
+
 export function multiplyNumbers(numbers: number[]): number {
   return numbers.reduce((acc, curr) => acc * curr, 1);
 }
