@@ -87,7 +87,7 @@ for (let y = minY; y <= maxY; y++) {
     if (!upLine) {
       break;
     }
-    const downLine = getFirstDownLine(lines);
+    const downLine = lines.shift();
     if (y === upLine.corners[1].y && isHorizontalLine(upLine.corners[1], downLine.corners[0]) || y === upLine.corners[0].y && isHorizontalLine(upLine.corners[0], downLine.corners[1])) {
       continue;
     }
@@ -124,6 +124,7 @@ function getDirection(directionStr: string): Direction {
 }
 
 function getLeadingUpLines(lines: Line[]): Line[] {
+  removeLeadingDownLines(lines);
   let upLines: Line[] = [];
   while (lines.length && lines[0].direction === Direction.up) {
     upLines.push(lines.shift());
@@ -131,12 +132,9 @@ function getLeadingUpLines(lines: Line[]): Line[] {
   return upLines;
 }
 
-function getFirstDownLine(lines: Line[]): Line {
-  while (lines.length) {
-    let line = lines.shift();
-    if (line.direction === Direction.down) {
-      return line;
-    }
+function removeLeadingDownLines(lines: Line[]): void {
+  while (lines.length && lines[0].direction === Direction.down) {
+    lines.shift();
   }
 }
 
@@ -151,7 +149,3 @@ function isHorizontalLine(corner1: Corner, corner2: Corner): boolean {
   }
   return false;
 }
-
-// Works on test data, but...
-// Too low: 134549089648856
-// Too high: 134749089648856 (?)
