@@ -214,6 +214,10 @@ export function factorizeIntoPrimes(number: number): number[] {
   return primes;
 }
 
+export function beep(): void {
+  process.stderr.write("\x07");
+}
+
 /*
 // Warn if overriding existing method
 if(Array.prototype.equals)
