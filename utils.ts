@@ -218,6 +218,20 @@ export function beep(): void {
   process.stderr.write("\x07");
 }
 
+export function copyGrid(originalGrid: string[][]): string[][] {
+  const newGrid: string[][] = [];
+
+  for (let i = 0; i < originalGrid.length; i++) {
+    const newRow: string[] = [];
+    for (let j = 0; j < originalGrid[0].length; j++) {
+      newRow.push(originalGrid[i][j]);
+    }
+    newGrid.push(newRow);
+  }
+
+  return newGrid;
+}
+
 /*
 // Warn if overriding existing method
 if(Array.prototype.equals)

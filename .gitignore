@@ -5,3 +5,4 @@ node_modules/
 utils.js.map
 utils.js
 *.js
+*notes*.txt
