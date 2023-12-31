@@ -2,6 +2,7 @@
 .idea/
 00/
 node_modules/
+venv/
 utils.js.map
 utils.js
 *.js
