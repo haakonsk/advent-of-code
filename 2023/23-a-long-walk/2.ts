@@ -25,15 +25,14 @@ class TrailLocation {
     if (this.beenHereBefore) {
       return;
     }
-    this.beenHereBefore = true;
     if (this.y === trailMap.length - 2 && this.x === trailMap[0].length - 2) {
-      this.beenHereBefore = false;
       if (currentLength + 1 > longestPath) {
         longestPath = currentLength + 1;
         say(longestPath);
       }
       return;
     }
+    this.beenHereBefore = true;
     for (let dir of [Direction.down, Direction.left, Direction.right, Direction.up]) {
       const [y, x] = getNextCoordinates(dir, this.y, this.x);
       if (dir === getOppositeDirection(direction) || trailMap[y][x].type === '#') {
