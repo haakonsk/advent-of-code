@@ -1,5 +1,12 @@
 import { beep, readLines, say } from '../../utils';
 
+/*
+ * It takes a while, but it works...
+ * Possible improvements for faster execution:
+ *  - Add only one threshold value per condition (instead of two)
+ *  - Simplify the workflows so that there will be fewer threshold values to consider
+ */
+
 console.time()
 
 let sum = 0;
@@ -33,13 +40,13 @@ readLines('workflows.txt').forEach((line: string) => {
       return;
     }
     const [conditionStr, name] = step.split(':');
+    const thresholdValue = parseInt(conditionStr.substring(2));
     condition.key = conditionStr[0];
     condition.index = getIndex(condition.key);
     condition.comparator = conditionStr[1];
-    condition.value = parseInt(conditionStr.substring(2));
+    condition.value = thresholdValue;
     condition.nextWorkflowName = name;
     conditions.push(condition);
-    const thresholdValue = parseInt(conditionStr.substring(2));
     if (condition.comparator === '<') {
       thresholds[condition.key].add(thresholdValue - 1);
     }
@@ -51,36 +58,36 @@ readLines('workflows.txt').forEach((line: string) => {
   workflowConditions[workflowName] = conditions;
 });
 
-const xs = Array.from(thresholds.x).sort((a, b) => a - b);
-const ms = Array.from(thresholds.m).sort((a, b) => a - b);
-const as = Array.from(thresholds.a).sort((a, b) => a - b);
-const ss = Array.from(thresholds.s).sort((a, b) => a - b);
+const xThresholds = getSortedThresholds('x');
+const mThresholds = getSortedThresholds('m');
+const aThresholds = getSortedThresholds('a');
+const sThresholds = getSortedThresholds('s');
 
 let prevX = 0;
-for (let x of xs) {
+for (let x of xThresholds) {
   let numAcceptedWithConstantX = 0;
   let prevM = 0;
-  for (let m of ms) {
-    let numAcceptedWithConstantM = 0;
+  for (let m of mThresholds) {
+    let numAcceptedWithConstantXM = 0;
     let prevA = 0;
-    for (let a of as) {
-      let numAcceptedWithConstantA = 0;
+    for (let a of aThresholds) {
+      let numAcceptedWithConstantXMA = 0;
       let prevAcceptedSCount = 0;
       let prevAccepted = false;
-      for (let s of ss) {
+      for (let s of sThresholds) {
         const part = [x, m, a, s];
         const count = getNumber(part);
         const accepted = runWorkflow(part, 'in');
         if (accepted) {
-          numAcceptedWithConstantA += (prevAccepted ? count - prevAcceptedSCount : 1);
+          numAcceptedWithConstantXMA += (prevAccepted ? count - prevAcceptedSCount : 1);
           prevAcceptedSCount = count;
         }
         prevAccepted = accepted;
       }
-      numAcceptedWithConstantM += (a - prevA) * numAcceptedWithConstantA;
+      numAcceptedWithConstantXM += (a - prevA) * numAcceptedWithConstantXMA;
       prevA = a;
     }
-    numAcceptedWithConstantX += (m - prevM) * numAcceptedWithConstantM;
+    numAcceptedWithConstantX += (m - prevM) * numAcceptedWithConstantXM;
     prevM = m;
   }
   say(x, numAcceptedWithConstantX);
@@ -122,4 +129,8 @@ function getIndex(key: string): number {
     case 'a': return 2;
     case 's': return 3;
   }
+}
+
+function getSortedThresholds(key: string): number[] {
+  return Array.from(thresholds[key]).sort((a, b) => a - b);
 }
