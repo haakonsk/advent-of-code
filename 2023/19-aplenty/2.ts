@@ -1,22 +1,23 @@
-import { readLines, say } from '../../utils';
+import { beep, readLines, say } from '../../utils';
+
+console.time()
 
 let sum = 0;
 
-class Part {
-  x: number;
-  m: number;
-  a: number;
-  s: number;
-}
-
 class Condition {
   key: string | undefined;
+  index: number;
   comparator: string | undefined;
   value: number | undefined;
   nextWorkflowName: string | undefined;
 }
 
-const thresholds: { [key: string]: number[] } = { x: [1, 4000], m: [1, 4000], a: [1, 4000], s: [1, 4000] };
+const thresholds: { [key: string]: Set<number> } = {
+  x: new Set([1, 4000]),
+  m: new Set([1, 4000]),
+  a: new Set([1, 4000]),
+  s: new Set([1, 4000]),
+};
 const workflowConditions: { [name: string]: Condition[] } = {};
 
 readLines('workflows.txt').forEach((line: string) => {
@@ -33,66 +34,92 @@ readLines('workflows.txt').forEach((line: string) => {
     }
     const [conditionStr, name] = step.split(':');
     condition.key = conditionStr[0];
+    condition.index = getIndex(condition.key);
     condition.comparator = conditionStr[1];
     condition.value = parseInt(conditionStr.substring(2));
     condition.nextWorkflowName = name;
     conditions.push(condition);
     const thresholdValue = parseInt(conditionStr.substring(2));
-    thresholds[condition.key].push(thresholdValue - 1);
-    thresholds[condition.key].push(thresholdValue);
-    thresholds[condition.key].push(thresholdValue + 1);
+    if (condition.comparator === '<') {
+      thresholds[condition.key].add(thresholdValue - 1);
+    }
+    thresholds[condition.key].add(thresholdValue);
+    if (condition.comparator === '>') {
+      thresholds[condition.key].add(thresholdValue + 1);
+    }
   });
   workflowConditions[workflowName] = conditions;
 });
 
-say(thresholds);
+const xs = Array.from(thresholds.x).sort((a, b) => a - b);
+const ms = Array.from(thresholds.m).sort((a, b) => a - b);
+const as = Array.from(thresholds.a).sort((a, b) => a - b);
+const ss = Array.from(thresholds.s).sort((a, b) => a - b);
 
-let prevAccepted = false;
-let count = 0;
-let prevAcceptedCount = 0;
-for (const x of thresholds.x.sort((a, b) => a - b)) {
-  for (const m of thresholds.m.sort((a, b) => a - b)) {
-    for (const a of thresholds.a.sort((a, b) => a - b)) {
-      for (const s of thresholds.s.sort((a, b) => a - b)) {
-        count = 4000 * 4000 * 4000 * (x - 1) + 4000 * 4000 * (m - 1) + 4000 * (a - 1) + s - 1;
-        const part = new Part();
-        part.x = x;
-        part.m = m;
-        part.a = a;
-        part.s = s;
+let prevX = 0;
+for (let x of xs) {
+  let numAcceptedWithConstantX = 0;
+  let prevM = 0;
+  for (let m of ms) {
+    let numAcceptedWithConstantM = 0;
+    let prevA = 0;
+    for (let a of as) {
+      let numAcceptedWithConstantA = 0;
+      let prevAcceptedSCount = 0;
+      let prevAccepted = false;
+      for (let s of ss) {
+        const part = [x, m, a, s];
+        const count = getNumber(part);
         const accepted = runWorkflow(part, 'in');
         if (accepted) {
-          if (prevAccepted) {
-            const diff = count - prevAcceptedCount;
-            say(sum, '+', diff, '(', prevAcceptedCount, ')')
-            sum += diff;
-          }
-          prevAcceptedCount = count;
+          numAcceptedWithConstantA += (prevAccepted ? count - prevAcceptedSCount : 1);
+          prevAcceptedSCount = count;
         }
         prevAccepted = accepted;
       }
+      numAcceptedWithConstantM += (a - prevA) * numAcceptedWithConstantA;
+      prevA = a;
+    }
+    numAcceptedWithConstantX += (m - prevM) * numAcceptedWithConstantM;
+    prevM = m;
+  }
+  say(x, numAcceptedWithConstantX);
+  console.timeLog();
+  sum += (x - prevX) * numAcceptedWithConstantX;
+  prevX = x;
+}
+
+say(sum);
+console.timeLog();
+beep();
+
+function runWorkflow(part: number[], name: string): boolean {
+  if (name === 'A') {
+    return true;
+  }
+  if (name === 'R') {
+    return false;
+  }
+  for (const condition of workflowConditions[name]) {
+    if (
+      !condition.key ||
+      condition.comparator === '<' && part[condition.index] < condition.value ||
+      condition.comparator === '>' && part[condition.index] > condition.value
+    ) {
+      return runWorkflow(part, condition.nextWorkflowName);
     }
   }
 }
 
-say(sum);
-say(167409079868000, 'should be');
+function getNumber(numbers: number[]): number {
+  return 4000*4000*4000*(numbers[0] - 1) + 4000*4000*(numbers[1] - 1) + 4000*(numbers[2] - 1) + numbers[3] - 1;
+}
 
-function runWorkflow(part: Part, name: string): boolean {
-  if (name === 'A') {
-    say('accept', part);
-    return true;
-  }
-  if (name === 'R') {
-    say('reject', part);
-    return false;
-  }
-  for (const condition of workflowConditions[name]) {
-    if (!condition.key) {
-      return runWorkflow(part, condition.nextWorkflowName);
-    }
-    if (eval(`part.${condition.key} ${condition.comparator} ${condition.value}`)) {
-      return runWorkflow(part, condition.nextWorkflowName);
-    }
+function getIndex(key: string): number {
+  switch (key) {
+    case 'x': return 0;
+    case 'm': return 1;
+    case 'a': return 2;
+    case 's': return 3;
   }
 }
