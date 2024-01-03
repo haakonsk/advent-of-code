@@ -25,30 +25,31 @@ class Spring {
   isDamaged: boolean | 'maybe';
   nextSpring?: Spring;
   currentArrangement: string = '';
+  cache: { [key: string]: number } = {};
 
   getNumArrangements(arrangement: string, numGroupsToMatch: number[]): number {
     this.currentArrangement = arrangement;
     if (this.isInvalidArrangement([...numGroupsToMatch])) {
       return 0;
     }
-    if (!this.nextSpring) {
-      // Got to the end
-      // say(arrangement + this.toString());
-      if (this.isValidArrangement([...numGroupsToMatch])) {
-        // say(arrangement + this.toString(), true);
-        return 1;
-      }
-      return 0;
+    if (!this.nextSpring) { // Got to the end
+      return this.isValidArrangement([...numGroupsToMatch]) ? 1 : 0;
     }
 
-    const originalArrangement = this.currentArrangement;
     if (this.isUknownCondition) {
+      const cacheKey = this.getCacheKey(arrangement);
+      if (this.cache[cacheKey] !== undefined) {
+        return this.cache[cacheKey];
+      }
+
       this.isDamaged = true;
-      let count = this.nextSpring.getNumArrangements(originalArrangement + '#', numGroupsToMatch);
+      let count = this.nextSpring.getNumArrangements(this.currentArrangement + '#', numGroupsToMatch);
       this.isDamaged = false;
-      return count + this.nextSpring.getNumArrangements(originalArrangement + '.', numGroupsToMatch);
+      count += this.nextSpring.getNumArrangements(this.currentArrangement + '.', numGroupsToMatch);
+      this.cache[cacheKey] = count;
+      return count;
     }
-    return this.nextSpring.getNumArrangements(originalArrangement + this.toString(), numGroupsToMatch);
+    return this.nextSpring.getNumArrangements(this.currentArrangement + this.toString(), numGroupsToMatch);
   }
 
   isInvalidArrangement(numGroupsToMatch: number[]): boolean {
@@ -56,7 +57,7 @@ class Spring {
     if (!numGroups.length) {
       return false;
     }
-    if (numGroups.length === numGroupsToMatch.length && numGroups[numGroups.length-1] > numGroupsToMatch[numGroupsToMatch.length-1]) {
+    if (numGroups[numGroups.length - 1] > numGroupsToMatch[numGroups.length - 1]) {
       return true;
     }
     numGroups.pop();
@@ -67,14 +68,19 @@ class Spring {
   isValidArrangement(numGroupsToMatch: number[]): boolean {
     const arrangement = this.currentArrangement + this.toString();
     const numGroups = Array.from(arrangement.match(/#+/g) || []).map((p) => p.length);
-    if (!numGroups.length) {
-      return false;
-    }
-    return numGroupsToMatch.join(',') === numGroups.join(',');
+    return numGroups.length ? numGroupsToMatch.join(',') === numGroups.join(',') : false;
+  }
+
+  getCacheKey(arrangement: string): string {
+    const numDamagedJustBefore = arrangement.length - arrangement.replace(/#+$/, '').length;
+    return [
+      arrangement.split('').filter((c) => c === '#').length.toString(),
+      numDamagedJustBefore.toString()
+    ].join('-');
   }
 
   toString(): string {
-    return this.isDamaged ? '#' : '.';
+    return this.isUknownCondition ? '?' : this.isDamaged ? '#' : '.';
   }
 }
 
@@ -87,7 +93,6 @@ readLinesSplit('input.txt', ' ').forEach(([pattern, numGroupsStr], i) => {
   numGroupsStr = numGroupsStr.substring(0, numGroupsStr.length - 1);
   pattern += '.';
   const numGroups = numGroupsStr.split(',').map((numStr) => parseInt(numStr));
-  // say(pattern, numGroupsStr);
 
   const hotSprings = new HotSprings();
   let previousSpring: Spring;
@@ -105,10 +110,10 @@ readLinesSplit('input.txt', ' ').forEach(([pattern, numGroupsStr], i) => {
     }
     previousSpring = spring;
   });
-  // say(hotSprings.toString());
+  say(hotSprings.toString(), numGroups.join(','));
   const count = hotSprings.getNumArrangements(numGroups);
   sum += count;
-  // say(i, count, sum);
+  say(count);
 });
 
 say(sum);
