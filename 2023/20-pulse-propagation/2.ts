@@ -1,8 +1,4 @@
-import { beep, readLinesSplit, say } from '../../utils';
-
-console.time();
-
-let foundLowRx = false;
+import { multiplyNumbers, readLinesSplit, say } from '../../utils';
 
 class Pulse {
   constructor(isHigh: boolean, fromModuleName: string, destinationModuleName: string) {
@@ -34,7 +30,7 @@ class FlipFlopModule extends Module {
     super(name, destinationModules);
   }
 
-  isTurnedOn: boolean = false;
+  isTurnedOn = false;
 
   receivePulse(pulse: Pulse): void {
     if (pulse.isHigh) {
@@ -53,9 +49,20 @@ class ConjunctionModule extends Module {
   }
 
   previousPulses: { [name: string]: Pulse } = {};
+  numButtonClicksBetweenEachHighPulse = 0;
 
   receivePulse(pulse: Pulse): void {
     this.previousPulses[pulse.fromModuleName] = pulse;
+    if (this.name === 'gh') { // gh is the module that outputs to the output module (rx)
+      // Find how often each of the input modules sends a high pulse (luckily, the frequency is constant):
+      this.inputModuleNames.forEach((name) => {
+        const inputModule = (modules[name] as ConjunctionModule); // All gh's input modules are ConjunctionModules
+        if (!inputModule.numButtonClicksBetweenEachHighPulse && this.previousPulses[name]?.isHigh) {
+          say(name, buttonClickCount);
+          inputModule.numButtonClicksBetweenEachHighPulse = buttonClickCount;
+        }
+      })
+    }
     this.destinationModuleNames.forEach((destinationModuleName) => {
       (modules.broadcaster as BroadcasterModule).addToQueue(new Pulse(!this.onlyHighPulses(), this.name, destinationModuleName));
     });
@@ -114,12 +121,7 @@ class OutputModule extends Module {
     super(name, destinationModules);
   }
 
-  receivePulse(pulse: Pulse): void {
-    if (!pulse.isHigh) {
-      say('found!');
-      foundLowRx = true;
-    }
-  }
+  receivePulse(pulse: Pulse): void {}
 }
 
 const modules: { [name: string]: Module } = {};
@@ -138,7 +140,7 @@ readLinesSplit('input.txt', ' -> ').forEach(([moduleStr, destinationModulesStr])
   }
 });
 
-modules.output = new OutputModule('output', []);
+modules.output = new OutputModule('rx', []);
 
 Object.entries(modules).forEach(([name, module]) => {
   module.destinationModuleNames.forEach((destinationModuleName) => {
@@ -147,21 +149,23 @@ Object.entries(modules).forEach(([name, module]) => {
 });
 
 const buttonModule = new ButtonModule('button', ['broadcaster']);
-let i = 0;
-while (true) {
+let buttonClickCount = 1;
+while (!allNumClicksBetweenHighPulsesFound()) {
   buttonModule.click();
-  i++;
-  if (i % 10000000 === 0) {
-    say(i);
-    console.timeLog();
-  }
-  if (foundLowRx) {
-    say('Found', i);
-    beep();
-    break;
-  }
+  buttonClickCount++;
 }
+
+const numButtonClicksBetweenHighPulses = modules.gh.inputModuleNames.map(
+  (name) => (modules[name] as ConjunctionModule).numButtonClicksBetweenEachHighPulse
+);
+say(multiplyNumbers(numButtonClicksBetweenHighPulses));
 
 function getModule(name: string): Module {
   return modules[name] ?? modules.output;
+}
+
+function allNumClicksBetweenHighPulsesFound(): boolean {
+  return modules.gh.inputModuleNames.every(
+    (name) => !!(modules[name] as ConjunctionModule).numButtonClicksBetweenEachHighPulse
+  );
 }

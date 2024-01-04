@@ -59,12 +59,6 @@ class FlipFlopModule extends Module {
 class ConjunctionModule extends Module {
   constructor(name: string, destinationModuleNames: string[]) {
     super(name, destinationModuleNames);
-    /*
-    this.inputModuleNames = inputModuleNames;
-    inputModuleNames.forEach((moduleName) => {
-      this.previousPulses[moduleName] = new Pulse(false);
-    });
-    */
   }
 
   previousPulses: { [name: string]: Pulse } = {};
@@ -73,7 +67,6 @@ class ConjunctionModule extends Module {
     this.log(pulse);
     this.previousPulses[pulse.fromModuleName] = pulse;
     this.destinationModuleNames.forEach((destinationModuleName) => {
-      // say('addToQueue', destinationModuleName);
       (modules.broadcaster as BroadcasterModule).addToQueue(new Pulse(!this.onlyHighPulses(), this.name, destinationModuleName));
     });
   }
@@ -163,14 +156,12 @@ Object.entries(modules).forEach(([name, module]) => {
   })
 });
 
-say(modules);
-
 const buttonModule = new ButtonModule('button', ['broadcaster']);
 for (let i = 0; i < 1000; i++) {
   buttonModule.click();
 }
 
-say(numLowPulses, numHighPulses, numLowPulses * numHighPulses);
+say(numLowPulses * numHighPulses);
 
 function getModule(name: string): Module {
   return modules[name] ?? modules.output;
