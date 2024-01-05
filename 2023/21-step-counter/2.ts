@@ -1,55 +1,264 @@
-import { readLines, say } from '../../utils';
+import { addNumbers, fillGrid, Grid, readLinesSplit, say } from '../../utils';
 
-// TODO: Need a smart solution when 2 * numSteps (much) greater than grid.length
+/*
+ * The number of steps to take is 26 501 365, which "coincidentally" ends exactly on the edge of a garden, which
+ * simplifies things, and we can use some geometry to find a formula.
+ * Each reachable garden plot will be contained inside a square rotated 45 degrees relative to the gardens.
+ * Each garden has 131 x 131 plots.
+ * Let's start by looking at the center garden. After all plots in this garden have been reached, the currently visited
+ * plots in the garden changes between two different states, depending on whether the number of steps is odd or even.
+ * The same applies to the other gardens. The number of reachable plots in a garden (after a given number of steps)
+ * where all reachable plots have been visited is 7566 or 7509 (numReachablePlotsForGardensInState1 /
+ * numReachablePlotsForGardensInState2) - depending on whether the total number of steps is odd or even. Since the x and
+ * y size of the garden is an odd number (131), adjacent gardens have opposite states. A drawing can reveal how to count
+ * the number of visited garden plots in edge gardens after the final step is taken.
+ * See bottom of file to see one garden where all the garden plots are marked that can be reached in exactly 65 steps.
+ */
 
-const grid: string[] = [];
+const gridSize = 131;
+const numSteps = 26_501_365;
+const numGardensInOneDirection = (2 * numSteps + 1) / gridSize;
+const numState1Gardens = Math.pow((numGardensInOneDirection - 1) / 2, 2);
+const numState2Gardens = Math.pow((numGardensInOneDirection + 1) / 2, 2);
 
-readLines('input.txt').forEach((line: string, y) => {
-  if (line.indexOf('S') !== -1) {
-    line = line.replace('S', '.');
+const [
+  numReachablePlotsForGardensInState1,
+  numReachablePlotsForGardensInState2,
+  numReachablePlotsForHalfGardensInState1,
+  numReachablePlotsForHalfGardensInState2
+] = calculateNumReachableGardenPlots();
+
+const numTimesExpanded = Math.sqrt(numState2Gardens) - 1;
+say(addNumbers([
+  numState1Gardens * numReachablePlotsForGardensInState1,
+  numState2Gardens * numReachablePlotsForGardensInState2,
+  numTimesExpanded * numReachablePlotsForHalfGardensInState1,
+  -(numTimesExpanded + 1) * numReachablePlotsForHalfGardensInState2,
+]));
+
+function calculateNumReachableGardenPlots(): [number, number, number, number] {
+  let [numReachablePlotsForGardensInState1, numReachablePlotsForGardensInState2] = [0, 0];
+  let [numReachablePlotsForHalfGardensInState1, numReachablePlotsForHalfGardensInState2] = [0, 0];
+
+  const shortestPaths = getShortestPathsToPlotsInCenterGarden();
+
+  for (let y = 0; y < gridSize; y++) {
+    for (let x = 0; x < gridSize; x++) {
+      if (shortestPaths[y][x] === Infinity) {
+        continue;
+      }
+
+      if (shortestPaths[y][x] % 2 === 0) {
+        numReachablePlotsForGardensInState1++;
+      } else {
+        numReachablePlotsForGardensInState2++;
+      }
+      const midPos = Math.floor(gridSize / 2);
+      const distanceFromCenter = Math.abs(y - midPos) + Math.abs(x - midPos);
+      if (distanceFromCenter > midPos) {
+        if (shortestPaths[y][x] % 2 === 0) {
+          numReachablePlotsForHalfGardensInState1++;
+        } else {
+          numReachablePlotsForHalfGardensInState2++;
+        }
+      }
+    }
   }
-  grid.push(line);
-});
 
-for (let i = 1; i <= 64; i++) {
-  say(getNumPositions(i))
+  return [
+    numReachablePlotsForGardensInState1,
+    numReachablePlotsForGardensInState2,
+    numReachablePlotsForHalfGardensInState1,
+    numReachablePlotsForHalfGardensInState2,
+  ];
 }
 
-function getNumPositions(numSteps: number): number {
-  let sum = 0;
-  const startY = Math.floor((grid[0].length - 2 * numSteps) / 2);
-  const endY = Math.ceil(grid[0].length / 2) + numSteps;
-  const midPos = (grid.length - 1) / 2;
-  let strLen = 1;
-  for (let y = startY; y < endY; y++) {
-    const [midStr, startIndex] = getMiddleSubstring(grid[y], strLen);
-    const numObstacles = midStr
-      .split('')
-      .filter((char, i) => i % 2 === 0 && (char === '#' || !isReachable(y, i + startIndex, startIndex, midPos)))
-      .length;
-    const numPositions = Math.floor(strLen / 2) + 1 - numObstacles;
-    // say(y, numPositions, numObstacles, midStr);
-    sum += numPositions;
-    y < midPos ? strLen += 2 : strLen -= 2;
+function getNewPositions(gardenPlots: string[][], y: number, x: number): [number, number][] {
+  const positions: { [key: string]: boolean } = {};
+  if (canGoTo(gardenPlots, y-1, x)) {
+    positions[`${y-1},${x}`] = true;
   }
-  return sum;
+  if (canGoTo(gardenPlots, y+1, x)) {
+    positions[`${y+1},${x}`] = true;
+  }
+  if (canGoTo(gardenPlots, y, x-1)) {
+    positions[`${y},${x-1}`] = true;
+  }
+  if (canGoTo(gardenPlots, y, x+1)) {
+    positions[`${y},${x+1}`] = true;
+  }
+  return Object.keys(positions).map((posStr) => {
+    const [yStr, xStr] = posStr.split(',');
+    return [parseInt(yStr), parseInt(xStr)];
+  });
 }
 
-function getMiddleSubstring(inputString: string, len: number): [string, number] {
-  const startIndex = Math.floor((inputString.length - len) / 2);
-  return [inputString.substring(startIndex, startIndex + len), startIndex];
+function canGoTo(gardenPlots: string[][], y: number, x: number): boolean {
+  return y >= 0 && x >= 0 && y < gridSize && x < gridSize && gardenPlots[y][x] === '.';
 }
 
-function isReachable(y: number, x: number, startX: number, midY): boolean {
-  if (grid[y][x-1] === '#' && grid[y][x+1] === '#' && grid[y-1][x] === '#' && grid[y+1][x] === '#') {
-    return false;
+function getShortestPathsToPlotsInCenterGarden(): Grid {
+  const gardenPlots: string[][] = [];
+  let currentPositions: [number, number][] = [];
+
+  readLinesSplit('input.txt', '').forEach((lineArray: string[], y) => {
+    if (lineArray.includes('S')) {
+      currentPositions.push([y, lineArray.join('').indexOf('S')]);
+      lineArray = lineArray.join('').replace('S', '.').split('');
+    }
+    gardenPlots.push(lineArray);
+  });
+
+  const shortestPaths = fillGrid(gridSize, gridSize, Infinity);
+  for (let i = 0; i < 150; i++) {
+    const newCurrentPositions: { [key: string]: boolean } = {};
+    currentPositions.forEach(([y, x]) => {
+      getNewPositions(gardenPlots, y, x).forEach(([y_, x_]) => {
+        newCurrentPositions[`${y_},${x_}`] = true;
+        if (shortestPaths[y][x] === Infinity) {
+          shortestPaths[y][x] = i;
+        }
+      });
+    });
+    currentPositions = Object.keys(newCurrentPositions).map((posStr) => {
+      const [yStr, xStr] = posStr.split(',');
+      return [parseInt(yStr), parseInt(xStr)];
+    });
   }
-  if (x < midY && grid[y][x+1] === '#' && grid[y+(y < midY ? 1 : -1)][x] === '#' && x-startX < 2) {
-    return false;
-  }
-  if (x > midY && grid[y][x-1] === '#' && grid[y+(y < midY ? 1 : -1)][x] === '#' && grid[y].length - startX - x < 2) {
-    return false;
-  }
-  // More TODO here
-  return true;
+  return shortestPaths;
 }
+
+/*
+Reachable garden plots after 65 steps marked with O:
+.................................................................O.................................................................
+....#...#.......................#.#......###..#.............#...O.O..........#.....#.....#.#...#.........#.#..........#......#.....
+...#.##.#...#.....................#.......#.......#....#.......O.O.O.......#....#...........#.#...........#....#...#...............
+.#........#.#................#.....#.....#.........#..........O.O.O.O......#..#...#........#..#..........##............#...........
+.....#.#.....#.....#..........#........#.........#...#.......O.O.O.O.O..........#....#.#......#....#.#####.................#.#.....
+...........................#...........#...#..#...#.........O.O.O.#.O.O...#......#.#......#.......#.......#.........#.........#....
+......#...#.....##.......................#.................O.O.#.O.O.O.O......#..#...##...#....#....##....##....#..#...............
+..................#...........#...........................O.O.O.#.O#O.O.O..................#....#.....#................#...........
+.#....##......#.............#.#.....#...#..#...#.....#...O.O.#.O.O.#.#.O.O......#..##..........#.........#.........................
+...........#.......#.....#................#.....#.......O.O.O.O.O.O.O.O.O.O....#.#....#...............#..........................#.
+............#.#..............#.......#.................O.O.O.O.O.O.O.O.O.O.O.............#......##....#.......#...##...............
+...................#.#......#.....................#...O.O.O##.#.O.O#O.O#O.O.O.......#...................#.....##.....#..#.#..#...#.
+..........#......#...#...#..#.................#......O.O.O.O.#.O.O.O.O.O.O.O.O.....#.........#.#........#.......#.#..............#.
+......#.......#...#.#............#.....#.#..........O.O.O.O.O#O.O.O.O.O.O##.O.O...................#...#...##......#..#......#......
+.#.............#.....#......#.....#.........#......O.O.O.O.##O.O.O.O.O.O.O.O.O.O...............#..#..#.#........#.....#............
+......#...............#......#....................O.O.O.O.#.O.O.O.O.O.O.##O.#.O.O.....##.........#.#......#......#..............#..
+.........#..............#........................O.O.O.O.O.#.O.O.O.O.O.O.O.O.#.O.O......##.......#........#........##............#.
+.....#..........#.....#.#..................##...O.O.O.O#O.O.#.O.O.#.O.#.O.#.O#O.O.O...#.............##.......#.....#........##.##..
+......#........#.....................#.........O.O.O.O#O.O.O.O.O.O.O.O.O.O.O.#.O.O.O.....#...#......#...##.........................
+..............#................#..#...........O.O.O.O.#.O.###.O.O.O.O.O.O.O.O.O.O.O.O.......#.#..##........##......##...#.....#....
+....#...............##.....#.#........#......O.O.O.O.#.O#O.O.O.O#O.#.O#O.O.O.O.#.O.O.O......#..##....#......#.....###..............
+.#......................#..#...#....#.......O.O.#.O.#.O.O.O.O.O.O.O.#.O.O.O.O#O.O.O.O.O...#...#.##....#................##....#...#.
+......#.......#.#...#......##..............O.O.O.O#O.O.O.O.O.O.O.O#O.O.O.#.O.O.O.O.O.O.O.......##.....#.#.....##.................#.
+......##................#....#...#...#....O.O.O.O.O#O.O.O.O.O.O.O.O.O.#.O.O.O.O.#.O.O.O.O.......#...........##.................#...
+....#.....#...#.#....#....#.......#.#....O.O.O#O.O###O.O.O.O.#.O.O.O.O.#.O.O.O.O.O.O.O.O.O...#.....#.##...#..##......#...#.........
+.................#....#...#....#.#......O.O.O.O.O.O.O.O.#.O.O.O.O.O.#.O.O.#.O.O.#.#.##O.O.O...#..........#......#..#....#..........
+....#...........#.......#..............O.O.O.#.#.O.#.O.O.O.O.#.O.O.O.O.O.O.#.O#O.O.O.O.O.O.O.....##............#.#.................
+...................#.#.......#...##...O.O.O.O.O#O.O.#.O.O.O.O.O.#.O.O.O.#.O.O.O.O.O.O.O.O.O.O....#...........#.##....##....##......
+......#..#.#...#..............#......O.O.O.O.O.O.O.O.O.O.O.O.O#O.O.O#O#O.O.O.O.O.O.O#O.#.O.O.O......#........#..............#.#....
+..#....#...........#...##..##..#....O.O.#.O#O.O.O#O.O.#.O.#.O.#.O.#.O.O#O#O.O.O.O.O.O.O.O.O.O.O.......#.#.#........................
+......#................#.#.........O.O.O.O#O.#.O.O##.O.O.O.O#O.O.O.O.#.O.O#O.O#O.#.#.O.O.O#O.O.O.....##....#...#......#.#.#...#..#.
+...#.#..##..#......#..............O.O.O.O.#.O.O.O.O.O.O.O.O#O.O.O.O.O.O.O.O.O.O.#.O.O.O.O.O.O.O.O............##...#......#..#......
+....#...#.##...##.......#........O.O.O.O.#.#.O#O.O.O.O.#.#.O.O.O.O.O.O.#.O.O.O.O.O.O##.#.O.O.O.O.O................##......##.......
+...#.........###.#.....#........O.O.#.O.O.O.O.#.O.O.O.O.O.O.O.O#O.O.O.O.O.O.O.#.O.O.O.O.O.O.O.O.O.O........#......#.....#..#.......
+...###....#....................O.O.O#O.#.O.#.O.O.O.O.O.O.O.O.O.O.O.O.O.O#O.O.O##.O#O.O.O.O.O.#.O.O.O.....#.....#................#..
+.............##.....#.........O.O.O.#.O.O.O.O.O#O.O.O#O.O.O.O.O.O.O#O.#.O.#.O#O.O.O.O.#.#.#.O.O.O.O.O...#............#...........#.
+.......#..........#..........O.O.#.O.O.O.#.O#O.O.O.O.#.#.O.O.O.O.O.O.O.#.O.O.O.O.O.O.O.O#O.O.#.O.O.O.O.......#.....................
+.............#..#...........O.O.O.O.O.##O.O.O#O#O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O#O.#.O#O.#.O.O#O.O##.O.O........#..#......#.........
+................#...#.#....O.O.O.O.O#O.O.O.O.O.O.#.O.O.O.O.O.O.O.O.O.O.O.O.O.#.O.O.O.O.O.##O.O#O.#.O.O.O....#.......#..#........#..
+.........#.#.........#....O.O.O.O#O.O.O.O.O#O.O.O.O.O.#.O.O.O.O.O.#.O.O.O.O.O.O.#.O.O.O.O.O#O.O.O.O.O.O.O.....#...#....#....#..#...
+...#.#.....#...#.........O.O.O.#.O#O.O.O.#.O.O.O.##O.O.O.O.#.O#O.O.O.#.O#O.O.O#O.O.O.O.O.#.O.#.#.O.O.O.O.O...#...#....#.....#......
+..#...#..##.....#.......O.O.O#O#O.O.O.#.O.#.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O#O##.O.O.O.O.O.O.###.O.O#O.O.O.O.........##....#......#.
+.......................O.O.O.O.O.O.#.#.O.#.O.O.O.#.O.O.##O.O.#.#.O.O.O#O.#.O.O.O.O.O.O.#.O.O.O.O.O.#.O#O.O.O...#.................#.
+.......#..............O.O.#.O#O.O.O.O.O.O.O.O.#.O.O.O.O.O.O.O.O.O.O.O.O.#.O.O.O.O.O.O.O.O.#.O.O.O.O.O#O.#.O.O.................#....
+..........#...#.##...O.O.O.O.O.O.O.O#O.O.O.##O.##O.O.O.#.O.O.O#O.O.O.#.O##.O.O.#.O.O.O.O.O.O.O#O.O.#.O.O.O.O.O...#...#..##.#...#...
+................#...O.O.O.O.O.O.O.O.O.O.O.#.O.O.O.#.O.O.O.O.O.O.O.#.O.O.O.#.O#O.O.##O.O#O.O.O.#.O.O#O.O.O.O.O.O.....#............#.
+..#....#..##.#.....O.O.O.#.O.O.O.O.##O.#.O#O.#.O.O.O.O.O.O.O.O.##O.O.O.#.O.##O.O.O.O.O.O.O.O.O.##O.O.#.O.O.O.O.O.....#.#..##.......
+......#......#....O.O.O.O#O.O.#.O.#.O.O#O#O.O.O.O.O.O.O.O.O.O.O.#.O.O.O.O.O.#.O.O.O.O.O.O.O.O#O.O.O.O.O#O#O.O.O.O...#.#............
+.....#....#..#...O.O.##O.O.O.O.O.O.O.O.O.O.#.O.O.O.O.O.O.O.O#O.O.O.O#O.O.O.O.O.O#O.O.O.O#O.O.O.O.O.O.O.#.O.O.O.O.O........#........
+..#........#....O.O.#.#.O.O.##O.O.O.O.#.O#O.O.O#O.O.O#O.O.O.#.O.O.O#O#O.O.O.O.O.O.##O.O.#.O.O.O.O.O.O.O#O.O.O.O.O.O...#...#........
+..#.##.........O.O.O.O.O.O.O.O#O.##O#O.O.O.O.O#O.O.O#O.O#O.O.O.O.O.O.#.O.O.O.O.O.O.O#O.O#O.O.O.O.O#O.O.O.O.O.O#O.O.O.......##......
+...#..........O.O.O.O.O.O.O.#.#.O.O##.#.O.O.O.#.#.O.O.O.O.O.O.#.O.O#O.O#O.O.O.#.O.O.#.O.O.#.O#O.O.O.#.O.##O.O.O.O.O.O....#.........
+......#......O.O.O#O.O.O.O.O.O.O.O.O#O.O.O.#.#.O.O.O#O.O.O.O##.#.O.O.#.O.O.#.O.O.O.O.O.O.O#O.O.O.O.O.O.O.O.O.O#O.O.O.O.......#.....
+.......#....O.O.O.O.O.#.O.O.O.O.O#O.O.O.O.O.#.O.O.O.O.O.#.O.#.O.O.O.O.O.O.O.O.O.O.O.O#O.#.O.O#O.O.O.O.O.O.O.O.O.O.O.O.O...#....#...
+...........O.O.O#O.#.O.O.O.#.O.O#O.##O.O.O.O.O.O.####O.O.#.O#O.O#O.O.O.O.O.O.O.O.#.O.O.O.O.O.O.O#O.O.O.O.O.O.O.O.O.O.O.O.........#.
+...#..#...O.O.O.O.O#O.#.O.O.O.O#O.O.O.O#O.O.O.#.O##.O.O.O.O.O.O.O.#.O#O#O.O#O.O.O.#.O.O.O.O.#.O.O.O.O.O.O.O.O.#.#.O.O.O.O...#.#....
+..#......O.O.O.O.O#O.O#O.O.O.O.O.O.O.O.O.O.O.O.O.#.#.O.O.O.#.O#O.O.O.O.O.#.O.#.O.O.O.#.O#O.O.#.#.O.O.O.O.O.O.O.O.O.O.O.O.O....#..#.
+...#....O.O.O.O.O.O.O.O.O.O.O.O.O.O.#.O.#.O.O.#.O.#.O.O.O.O#O.O.O.O#O.#.O#O.O.O.O.O.O.O.#.O.#.O.O.#.O.O.O.#.O.O.O.O.O.O.O.O........
+.......O.O.O##.O.O.O.O.O.O.#.O.O.O.#.O.O.O.O.O.#.O.##O.O.O.#.O.O.O#O.O.O.O.O.O.O.O.O#O.O.O.O###O.O.O.O.O.O#O.O.O.#.O.O.O.O.O.....#.
+......O.O.O.O.O.O.O.O.O#O.O###O.O.O.O.O#O.O.O#O.O.O.O.O.O.O.O.O#O.O.##O.#.O.O.O.O.O.O#O.O.O.O.O.O##.O.O#O.O.O.O.O#O#O.##O.O.O......
+.....O.O.O.##O.O.O.O.O.O.O.O.O.O.O#O.O.#.O#O.O.O.O.O.O.O.O.O.O.#.O.O.O.O.O.O.O.O.O.O.#.O.O.O.O.O#O.O.O##.O.O.O.O#O.O.O.O.O.O.O...#.
+....O.O.#.O.O.O.O#O.O.O##.O.O.O.O##.O.O.O.O.##O.#.#.O.O.O.O.O.O.O.O.O##.O.O.O.O.O##.O.#.O.##O.O.O.O.O.O.O.#.O.O.O#O.O.O.O.O.O.O....
+...O.O.O.O.O.O.O.O.#.O.O.O.O.#.##O.#.O#O#O.#.O.O.O.O.O.##O.O.O.O.O.O.O.O.#.O.O.O.#.O.O.O#O.O#O#O.O.O.O.#.#.O#O.O.O.O.O.O.O.O.O.O...
+..O.O.O.O.O.O.O.O#O.O.O.O.O.##O.O.O.O.O.O.O#O.O.O#O.O.O.O##.O#O.#.O.O.O.##O.##O.O.O.O.O.O.O.O#O.O.O.O.O.O.O.#.O.O.O#O##.O.O.O.O.O..
+.O.O.O.O.O.O#O.O.#.O.O.O.O.O.O.##O.O#O.O.O#O.O.O.O.O.O.O.O.O.###.O#O.#.O.O.O#O.O.O.O.O.O.#.O.O.O.O.O.O##.O.O.O.O.O.O.O#O.O.#.O.O.O.
+O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O
+.O.O.O.O.O.O#O.O.O.#.O.O#O.O.O.O.#.O#O.#.#.O.O.O.O.O.O.O.O.O#O.#.O.O.O#O.O.O.O.O.O.O.O.#.O.O.O.O.O.#.#.O#O.O.#.O.O.O#O.#.O.O.#.O.O.
+..O.O.O.O.O.O.O.#.O.O.O.O.O.O.O.O.O.O.O.#.O.##O.O.O.O.O#O.O.O.O.O.O.O.O#O#O.O.O.O.O.O.O.O.O.O##.O.O.O.O.#.O.O#O.#.O.O.O.O.O.#.O.O..
+...O.O.O.O.#.O##.O#O.O.O.O.O.O#O.O.O.O.##O.O.O.O.O.O#O.##O.#.O#O.O.O.O.O.#.O.O.O#O.O.O.O.O.#.O.O#O.#.O.O.O.O#O.O.O.O.O##.O.O.O.O...
+....O.O.O##.O#O.O#O.O.O.O.O.O.O#O.O.#.O.O.O.O.O.#.O.#.O.#.O.O.O#O.#.O.O.O.O.O.O.O.#.O.O.O.O#O.O.O.O.O.O.O.#.#.O.O#O.O.O.O.O.O.O....
+.#...O.O.O.O.O.O.O.O.O.O.O.O.O#O.O.O.O.O.O.O.#.O.O##.O.O.#.O#O.#.O.O.O.O.O.O#O#O.O.#.O#O.O.O.#.O.O.#.O.O.O.O#O.O.O#O.O.O.O.O.O.....
+......O.O.O.O.O.O.O#O.O#O.O.O.O.O.O#O.O.O.O.O.O.#.O.O.##O.O.O.O.#.O.O#O.O.#.O#O.O.#.O.O.O.O.#.#.O.O#O#O.O.O##.O#O.#.O.O#O.O.O......
+.......O.O.O.O.O#O#O.O#O.O.#.#.O.O##.O#O.##O.O#O.O.O.O#O#O.O.O.O.O.O.#.O.O.O.O.O.O.O.O.O.O.O.O.###.#.O.O.O.O.O.O.O.O.##O.O.O.......
+.#.#....O.O.O.O.O.O.O.O.O.O.O#O.O.O.O.O.O.O.O.O.O.O#O.O.O.O.O.O.O.O.O.O.O.O#O#O.O#O.##O.O#O.#.#.O.O.O.#.O.O.O.O.O.O.O.#.O.O...#..#.
+.........O.O.O#O.O###O.O.O.O.O.O#O.O.#.O#O.O.O.O.O.O.O.O.O#O.#.O.O.O#O#O.O.O.O.#.#.O.#.O.#.O#O.#.O.#.#.O#O.O.O.O.O.O.O.O.O....#.#..
+..........O.O.O.O.O.O.O.O.O.O.O.O.O.O##.O.O.O.O.O.O.O.#.#.O.O.O.#.O.O.O.#.O.O.O.O.O#O.O.O.#.O.O.O.O.#.O#O.O.O.O.O.O.#.O.O..........
+...........O.O.O.O.O.O#O.#.#.#.O.O.O.O.O.#.##O.O.O#O.O.O.O.O.O.O.O#O.O#O.O.O.O.O#O.O.O##.O.O.O.O.O.O##.O.O.O.O.O.O.O.O.O....#....#.
+............O.O.O.O#O.O.#.O#O#O.O#O.O#O.O.O#O.O.O.O.O#O.#.O.O.O.#.O.O.O.O.O.#.O#O.O.O.O.O.O.O.O.O.O.O.#.O.O.O.#.O.O.O.O...#........
+.............O.O.O.O.#.O.#.O.O.#.#.O.O.O#O.O.##O.##O##.O.O.O.O.#.O.O.O.O.O#O.O.O.O.O.O###O.O.O.#.O.O.O#O.O.O.O#O.O.O.O........#....
+..#...........O.O.O.O.O.#.O.O.O.O.O.O.O#O#O.#.O.O.O.O.O.O#O.O.O#O.O.O.O.O#O#O.O.O.O.O.O.O.#.O.O.O.O.O.O.O.O.O.O.O.O.O......#.......
+.#........#....O.O.O.O##.O.O.O.O.O.O.O.O.O.O.O.O.O.#.O.O.O.O#O.O.O.##O.O.O.O.O.O.#.O.O.O#O.O.O.#.O.O.O#O.O.O.O.O.O.O...............
+...........#....O.O.O.O.O.O.O.O#O.O##.O.O.O#O.O.O.O.O.O#O.O.O.O.O.O.O.O.O.O#O.O.O.O.O.O.O.O.O.O#O#O.O.O.#.O.O.O.O.O...#..#...#.....
+..........#......O.O.##O.O.O.O.##O.#.#.O.O#O.O.O#O.O.O.O.O.O##.O.O.O.#.O.O.O.O.O.#.O.O.O.##O#O.O.O.O.#.O.#.O.O.O.O....#..........#.
+.........#........O.O.O.O.O.O.O.O.O.O#O.O#O##.O.O.O.O.O.#.O.O.O.O.O.O.##O.O.#.O.#.O.#.O.O.O.O.O.O.#.O.O.#.O.#.O.O.....#............
+..#.....#..........O.O.O.O.O.O.O.O.O#O.O.#.O.O.O.O.O.O.O.O.#.O#O.O.O.O.O.O.O.O.O.O.##O.#.##O##.O.O#O.O.O.#.O.O.O............#......
+.....##.............O.O.O.#.O.O.O#O#O.#.O.O.O.O.O.O.#.O.O.O.O#O.O.O.#.O#O.O.O.O.O.O.O.O.O.O.O.O.O#O.O.O.O.O.O.O.......#....#...#...
+.#...................O.O.O.O.O.O.O.O.#.O.O#O.O.O.O.#.O.#.#.O.#.O.O.O.O.O.#.#.O.O.O.#.O#O.#.O.O.O.##O#O.O.O.O.O..........#....#.#.#.
+.#......#....#....#...O.O.O.O.O.O.O.O.O.O.O#O.O.O.O.O.O.O.O.O.O.#.O.#.O#O.O#O.#.O.O.O.O.O.#.O.O.O#O.#.O.O.O.O......................
+..........#.......#....O.O.O.#.O.O.O.O.##O.O##.O.O.#.O.O.O.#.O.O#O.O.O.O.O.#.O#O.O.O.#.O.O.O.O.O.O.O.O.O.O.O............##.........
+...#...........#........O.O.O.O#O#O.O.##O.O.O.#.O.O.O.O.O.O.O.O.O.O.#.O.O#O.O.O.O.O.##O.#.O##.O.O##.#.O.O.O...#......#.......#.....
+.#.................#.....O.O.O.#.O.O.O#O.O#O.O.O.O.#.O.O.O.O.#.##O.O.O.O.O.O.O.#.O.O.O.#.O.#.#.O.#.O.#.O.O......#..#.#.............
+.....#..#...#...#.........O.O.O.O.O.#.O.#.O#O.#.O.O.O.#.O#O.O.O.O.O.O.O.O.#.O.O.O.O.O.O#O.O.O.#.O.O.O.O.O.........##..#..........#.
+......#.......#...#........O.O.O.#.##O.O.O#O.#.O.O.O.O#O.O.#.O.O.O.O.O#O.###.O.O.O.O.O.O.O.O.O.O.O.O.O.O.......#............#......
+..#..........#...#..##..#...O.O.O.O.##O.O.O.O.O##.O.O#O.#.O.#.O.O.O.O.O#O##.O.O.O.#.O.O.O.#.O#O.#.O.O.O......#.#...#.......##..#...
+..#..#....#..##........##....O.O.O.O#O#O.O.O.O.O.O.O.O.O.#.O.O.O#O#O#O.O.O.O.#.O.O.O.O.O#O.O.O.O.O.O.O....................#..#.....
+.................#............O.O.O.O.O.O.O.O#O.#.O.O.O.O.O.O.O.O.O.O#O.#.#.#.O#O.O.#.O.O#O.O.O.O.O.O...#....###.....#...#..##.#...
+......#.....#.........#........O.O.O.O.O.O.O.O##.O.O.#.O.O.O.#.#.O##.O.O#O.O.O#O.O.#.O.##O.O#O.#.O.O......#....#..#................
+..........#........##...........O.O.O.O.O.O.O.O.#.#.O.O.O.O.O#O.O.O.O.O.O.O.O.#.O.O.#.#.O.##O.O.O.O................#.......#..#....
+.........#.....#...........#.....O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.O.....#.....#...............#.....
+.................#.....#..........O.O.O.O.#.O.#.O.O#O#O.O.O.O.O.O.#.O##.O.O.O.O.O#O.O.O.#.##O.O.O........###......#..........#.....
+.#.................................O.O.O.O.O.O.O.O.O.#.O#O.#.#.O.O.O.O#O.O.O.O.O.O.O.O#O.O.O.O.O...........#.............#..#......
+..#..#......#..#........#..#........O.O.O.##O.O.O.O.O.O#O#O.O.O.O.#.O.O.O.O.#.O#O.O.O.O.O.O.O.O.....................#.....#........
+.#.....#..#.#..##....#...#...........O.O.O.O.O.O#O.O.O.O.O.###.#.O##.O.O.O.#.O.O.O.O.O.O.O.O.O.......#....#........#..#............
+..#.......#.#.......#........#.#......O.O.O.O#O.O.O.O.O.#.O.O.O.O.#.O.#.O.O.O.O.O.O.O.O.O.O.O...............#........#.##.......#..
+...#......#.#......##.##......##.#.....O.O.O.##O.O.#.O.O.#.O.O.O.O.O.O.O.O.O.O.O#O.O.O.O.O.O....#.....##.............#..........#..
+.#.#....#...............................O.O.##O.O.O.O.O.O.O.O.O#O.O.O.O.O.O.O##.#.O.O.O.O.O......#...#.#...#.............#.....###.
+..#..........#.##.###....#...#.......#...O.O.O.O.O.O#O.O.O.O#O.O.O.O.O.O.O.O.O#O#O.O.#.O.O......#.#...#...#..#........#............
+.......##.........#....#....##..##........O.O.##O.O.O.O.O#O.O.O.O.O.O#O.O##.#.O.O.##O.O.O.....#.........#............#.#....#.##...
+....#...###...........#......#.............O.O.#.O.O.#.#.O.O.O.O.O.O.O.O.#.O.O.O.O.O.O.O...#......#.............................#..
+...#..#...................#..#....#...#.....O.O.O.O.#.O.O.O.#.#.O.O.O.O.###.O.#.O.O.O.O...........#....##..#...........#......#....
+.#...............#.............#..##.........O.O.O.O.O.O.O.O.O.O#O.O.O.O.O.##O.O.O.O.O........#.#.#.##....#.......#.#...#..#.......
+..#...........#.....................#..#......O.O.O#O.#.##O.#.O.O.O####.O.O.O.O.#.O.O..........................##........###.##.#..
+.......#.....#..........#.#....................O.O.O#O.O.O.O.O.O#O.O.O#O.O#O.O.#.O.O..........#..........##.#................#.....
+.#.....#....#...#....#..........#...............O.O.O#O.O.O.O.O.O.O.O.#.O.O#O.O.O.O....#....#.....................##...#....#....#.
+................##...#....#........#..##.........O.O.#.O.O.O.O.O.O##.#.O.O##.O.O.O......#........#.##............#.#.........#.....
+......#.#.#.#....#........................#.......O.O.O.O.O.O#O#O.O.O.O.O.O.O.O.O.......#........#.#....................#.....#.#..
+......#..#.........#........#....#...#...#...#.....O.O.O.O.O.##O.O.O.O#O#O.O.O.O......................................##...#....#..
+......#.#......................#....#..#............O.O.O.O.#.O.O.O.#.O.O.O.O.O......#..#..#.#..#...............#.........##.#.....
+............#.....................###................O.O.O.O##.O.O.#.O.O.#.O.O....#...#........#.........#..#........#.........#.#.
+....#......#..#.................#........#..#...#.....O.O.#.O.O.#.#.O.O.O.O.O.......#.............#..#.....#........#....#.........
+.#..#......#..#.....................#.....#......#.....O.O.O.O.O.O.O.O.O.O.O....#..#..................#..#..##...........#.........
+...#.............#...........#...................#.#....O.O.#.O.O.#.O.O.O.O....#............................#..#...................
+.....#....#.........#..#.#..............#.#..#.##....#...O.O.##O.O.O.O.O.O...............#....#...........#...............###......
+......#................#..#....................#.....#....O.O.O.O.O.O.O.O.....#.#....#.......#................#.............#...#..
+..........#...........#.........#.................#........O.O.O.O.O.O.O....#........#..#.............#......#..........#..#.......
+.....#...#...................#.....#.........##..#..........O.O.O.O.O.O................#.....#.#....#........#...#..#....#.........
+..#.#.......#...##..#........#..##...##.#...#...........#....O.O.O.O.O............#.....#........#..................#....#.....#.#.
+.#.........................#.............#....................O.O.O.O............#..........##....#..#####.#.#.................#...
+.#.#...........#.....#.##.....#...............#....#.....#.#...O.O.O.........#..#.....#...#...........#......#...#............#..#.
+...#...........#..#............#.......#.#.........#..##........O.O.....#.#.......#............#.................#.....##..........
+.................................................................O.................................................................
+*/
